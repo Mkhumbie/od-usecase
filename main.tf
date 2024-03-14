@@ -1,0 +1,265 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.95.0"
+    }
+  }
+}
+
+provider "azurerm" {
+    subscription_id = var.subscript_id
+    client_id       = var.client_id
+    tenant_id       = var.tenant_id
+    client_secret   = var.client_secret
+    features {}
+}
+
+variable client_secret {
+  description = "client id"
+}
+variable "client_id" {}
+variable "tenant_id" {}
+variable "subscript_id" {}
+
+variable vnet_env_location {
+  description = "virtual network"
+}
+variable snet_env_location {
+  default = "subnet"
+}
+variable environment {
+  description = "deployment env"
+}
+variable app_service {
+  description = "vm name or app service"
+}
+variable location {
+  description = "Azure region location"
+  
+}
+variable vm_size {
+  description = "virtual machine size"
+  default = "Standard_DC1s_v3"
+}
+variable vm_username {}
+variable vm_password{}
+variable vm_sku {}
+
+locals {
+  resource_group= "rg-${var.app_service}-${var.environment}"
+  location = var.location
+}
+
+#Data source to access the configuration of the AzureRM provider
+data "azurerm_client_config" "current" {}
+
+#RG creation
+resource "azurerm_resource_group" "app_grp" {
+    name= local.resource_group
+    location = local.location
+}
+#vnet creation
+resource "azurerm_virtual_network" "app_vnet" {
+  name                = "vnet-${var.environment}-${var.location}-002"
+  location            = local.location
+  resource_group_name = local.resource_group
+  address_space       = var.vnet_env_location
+  tags = {
+    environment = var.environment
+  }
+  depends_on = [ azurerm_resource_group.app_grp ]
+}
+#Subnet creation
+resource "azurerm_subnet" "snet_env_location" {
+  name = "snet-${var.environment}-${var.location}-002"
+  resource_group_name = azurerm_resource_group.app_grp.name
+  virtual_network_name = azurerm_virtual_network.app_vnet.name
+  address_prefixes = var.snet_env_location
+  depends_on = [  
+    azurerm_virtual_network.app_vnet
+   ]
+
+}
+#PIP creation
+resource "azurerm_public_ip" "pip_app_vm" {
+    name = "pip-vm-${var.app_service}-${var.environment}-002"
+    resource_group_name = azurerm_resource_group.app_grp.name
+    location = azurerm_resource_group.app_grp.location
+    allocation_method = "Static"
+    depends_on = [ azurerm_resource_group.app_grp ]
+}
+# NIC creation
+resource "azurerm_network_interface" "app_interface" {
+  name                = "nic-01-${var.app_service}-vm-${var.environment}-002"
+  location            = azurerm_resource_group.app_grp.location
+  resource_group_name = azurerm_resource_group.app_grp.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.snet_env_location.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.pip_app_vm.id
+    
+  }
+  depends_on = [ azurerm_public_ip.pip_app_vm,
+  azurerm_subnet.snet_env_location ]
+}
+# VM Creation
+resource "azurerm_windows_virtual_machine" "app_vm" {
+  name                = "vm-${var.app_service}-${var.environment}"
+  resource_group_name = azurerm_resource_group.app_grp.name
+  location            = azurerm_resource_group.app_grp.location
+  size                = var.vm_size
+  admin_username      = var.vm_username
+  admin_password      = azurerm_key_vault_secret.app-secret.value
+  //availability_set_id = azurerm_availability_set.app_availset.id
+  network_interface_ids = [
+    azurerm_network_interface.app_interface.id,
+  ]
+  
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = var.vm_sku
+    version   = "latest"
+  }
+  depends_on = [ azurerm_network_interface.app_interface, azurerm_key_vault_secret.app-secret
+   ]
+}
+#NSG-2
+resource "azurerm_network_security_group" "nsg-02-app" {
+  name                = "nsg-${var.app_service}-002"
+  location            = local.location
+  resource_group_name = local.resource_group
+
+  security_rule {
+    name                       = "allow_port_80"
+    priority                   = 101
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+  depends_on = [ azurerm_resource_group.app_grp ]
+}
+# NSG-1
+resource "azurerm_network_security_group" "nsg-01-app" {
+  name                = "nsg-${var.app_service}-001"
+  location            = local.location
+  resource_group_name = local.resource_group
+
+  security_rule {
+    name                       = "allow_port_3389"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3389"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+  depends_on = [ azurerm_resource_group.app_grp ]
+}
+#NSG Association at subnet level
+resource "azurerm_subnet_network_security_group_association" "nsg_association" {
+  subnet_id = azurerm_subnet.snet_env_location.id
+  network_security_group_id = azurerm_network_security_group.nsg-01-app.id
+  depends_on = [  
+    azurerm_network_security_group.nsg-01-app
+   ]
+  
+}
+#NSG Association at an interface level
+/*resource "azurerm_network_interface_security_group_association" "network_isg" {
+  network_interface_id      = azurerm_network_interface.app_interface.id
+  network_security_group_id = azurerm_network_security_group.nsg-02-app.id
+  depends_on = [ azurerm_network_security_group.nsg-02-app ]
+}*/
+#Availability set for VMs
+/*resource "azurerm_availability_set" "app_availset" {
+  name = "${var.app_service}-availset"
+  location = local.location
+  resource_group_name = local.resource_group
+  platform_fault_domain_count = 3
+  platform_update_domain_count = 3
+  depends_on = [  
+    azurerm_resource_group.app_grp,
+   ]
+}*/
+#Azure managed disk creation
+resource "azurerm_managed_disk" "managed_disk" {
+  name = "data-disk"
+  location = local.location
+  resource_group_name = local.resource_group
+  storage_account_type = "Standard_LRS"
+  create_option = "Empty"
+  disk_size_gb = 16
+  depends_on = [ 
+    azurerm_resource_group.app_grp ]
+}
+#Attached the created disk to Azure VM
+resource "azurerm_virtual_machine_data_disk_attachment" "disk_attach" {
+  managed_disk_id = azurerm_managed_disk.managed_disk.id
+  virtual_machine_id = azurerm_windows_virtual_machine.app_vm.id
+  lun = "0"
+  caching = "ReadWrite"
+  depends_on = [ 
+    azurerm_windows_virtual_machine.app_vm, azurerm_managed_disk.managed_disk
+   ]
+}
+#Random id creation
+resource "random_id" "kv_random_id" {
+  byte_length = 3
+}
+#Key vault creation
+resource "azurerm_key_vault" "key_vault" {
+  name                        = "kv-${var.app_service}-${var.environment}-${random_id.kv_random_id.hex}"
+  location                    = local.location
+  resource_group_name         = local.resource_group
+  enabled_for_disk_encryption = true
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  soft_delete_retention_days  = 7
+  purge_protection_enabled    = false
+
+  sku_name = "standard"
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+
+    key_permissions = [
+      "Get",
+    ]
+
+    secret_permissions = [
+      "Get", "List", "Set", "Delete", "Recover", "Backup", "Restore", "Purge",
+    ]
+
+    storage_permissions = [
+      "Get",
+    ]
+  }
+  depends_on = [ azurerm_resource_group.app_grp ]
+}
+#Key secret creation and storing in vault
+resource "azurerm_key_vault_secret" "app-secret" {
+  name         = "${var.app_service}-secret"
+  value        = var.vm_password
+  key_vault_id = azurerm_key_vault.key_vault.id
+  depends_on = [ azurerm_key_vault.key_vault ]
+}
+
+output "vm_ip_address" {
+  value  = azurerm_windows_virtual_machine.app_vm.public_ip_address
+}
