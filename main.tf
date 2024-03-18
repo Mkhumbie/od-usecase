@@ -15,25 +15,6 @@ provider "azurerm" {
     features {}
 }
 
-variable subscript_id {}
-variable client_id {}
-variable client_secret {}
-variable tenant_id {}
-
-variable vnet_address_space {}
-variable subnet_address_prefix_01 {}
-#variable subnet_address_prefix_02{}
-variable env_prefix {}
-variable "location" {}
-variable "app_service" {}
-variable my_ip {}
-
-variable "os_publisher" {}
-variable "os_offer" {}
-variable "os_sku" {}
-variable "os_version" {}
-
-
 data "azurerm_subnet" "subnetID-001" {
   name                 = "snet-${var.env_prefix}-${var.location}-001"
   virtual_network_name = azurerm_virtual_network.vnet-mypapp.name
@@ -240,15 +221,3 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
 }*/
 
 #######################################
-output "subnet_prefix" {
-  value = data.azurerm_subnet.subnetID-001.address_prefixes
-}
-output "subnet_id" {
-  value = data.azurerm_subnet.subnetID-001.id
-}
-/*output "subnet_id" {
-  value = data.azurerm_subnet.subnetID-001.id
-}*/
-output "vm_pip" {
-  value = azurerm_linux_virtual_machine.app_vm.public_ip_address
-}
