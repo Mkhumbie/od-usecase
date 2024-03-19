@@ -21,6 +21,7 @@ variable client_secret {}
 variable tenant_id {}
 
 variable vnet_address_space {}
+variable subnet_address_bastion {}
 variable subnet_address_prefix_01 {}
 #variable subnet_address_prefix_02{}
 variable env_prefix {}
@@ -69,34 +70,48 @@ resource "azurerm_virtual_network" "vnet-mypapp" {
   }
 }
 #PIP creation 
-resource "azurerm_public_ip" "myapp_pip_address-01" {
+/*resource "azurerm_public_ip" "myapp_pip_address-01" {
   name                = "pip-${var.app_service}-${var.env_prefix}-1"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg-myapp.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}*/
+
+#PIP creation for NatGW
+resource "azurerm_public_ip" "myapp_pip_address-03" {
+  name                = "pip-${var.app_service}-${var.env_prefix}-3"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg-myapp.name
   allocation_method   = "Static"
   sku                 = "Standard"
 }
 #PIP creation for VM address 
-resource "azurerm_public_ip" "myapp_pip_address-02" {
+/*resource "azurerm_public_ip" "myapp_pip_address-02" {
   name                = "pip-${var.app_service}-${var.env_prefix}-2"
   location            = var.location
   resource_group_name = azurerm_resource_group.rg-myapp.name
   allocation_method   = "Static"
   sku                 = "Standard"
-}
-# NAT Gateway creation
-/*resource "azurerm_nat_gateway" "nat_gw_myapp" {
+}*/
+#  NAT Gateway creation
+resource "azurerm_nat_gateway" "nat_gw_myapp" {
   name                    = "natgw-${var.app_service}-${var.env_prefix}"
   location                = var.location
   resource_group_name     = azurerm_resource_group.rg-myapp.name
   sku_name                = "Standard"
   idle_timeout_in_minutes = 10
-}*/
+}
 #NAT gateway PIP association
-/*resource "azurerm_nat_gateway_public_ip_association" "natgw_pip_association" {
+resource "azurerm_nat_gateway_public_ip_association" "natgw_pip_association" {
   nat_gateway_id       = azurerm_nat_gateway.nat_gw_myapp.id
-  public_ip_address_id = azurerm_public_ip.myapp_pip_address-01.id
-}*/
+  public_ip_address_id = azurerm_public_ip.myapp_pip_address-03.id
+}
+#Subnet NatGW association
+resource "azurerm_subnet_nat_gateway_association" "subnet_natgw_assoc" {
+  subnet_id = data.azurerm_subnet.subnetID-001.id
+  nat_gateway_id = azurerm_nat_gateway.nat_gw_myapp.id
+}
 
 # NIC creation
 resource "azurerm_network_interface" "app-nic-1" {
@@ -108,7 +123,7 @@ resource "azurerm_network_interface" "app-nic-1" {
     name                          = "internal"
     subnet_id                     = data.azurerm_subnet.subnetID-001.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id = azurerm_public_ip.myapp_pip_address-01.id
+    #public_ip_address_id = azurerm_public_ip.myapp_pip_address-01.id
   }
 }
 # NIC-2 creation
@@ -121,7 +136,6 @@ resource "azurerm_network_interface" "app-nic-2" {
     name                          = "internal"
     subnet_id                     = data.azurerm_subnet.subnetID-001.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id = azurerm_public_ip.myapp_pip_address-02.id
   }
 }
 #NAT gateway subnet association
@@ -183,6 +197,34 @@ resource "azurerm_network_security_group" "nsg_subnet-001" {
     environment = var.env_prefix
   }
 }
+#Azure Bastion subnet creation
+resource "azurerm_subnet" "bastion_subnet" {
+  name                 = "AzureBastionSubnet"
+  resource_group_name  = azurerm_resource_group.rg-myapp.name
+  virtual_network_name = azurerm_virtual_network.vnet-mypapp.name
+  address_prefixes     = var.subnet_address_bastion
+
+}
+#Azure Bastin PIP
+resource "azurerm_public_ip" "bastion_ip" {
+  name                = "pip-bastion-${var.env_prefix}-1"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg-myapp.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+# Bastion host
+resource "azurerm_bastion_host" "bastion_host" {
+  name                = "bas-vnet${var.env_prefix}-${var.location}-001"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.rg-myapp.name
+
+  ip_configuration {
+    name                 = "bastion-configuration"
+    subnet_id            = azurerm_subnet.bastion_subnet.id
+    public_ip_address_id = azurerm_public_ip.bastion_ip.id
+  }
+}
 #VM creation###########################
 resource "azurerm_linux_virtual_machine" "app_vm" {
   name                = "app-vm"
@@ -212,7 +254,7 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
   }
   user_data = base64encode(file("entry_script.sh"))           
 }
-/*resource "azurerm_windows_virtual_machine" "app_vm" {
+resource "azurerm_windows_virtual_machine" "app_vm" {
   name                = "windServ1"
   resource_group_name = azurerm_resource_group.rg-myapp.name
   location            = var.location
@@ -235,9 +277,7 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
     sku       = "2016-datacenter-gensecond"
     version   = "latest"
   }
-  #depends_on = [ azurerm_network_interface.app_interface, azurerm_key_vault_secret.app-secret
-   #]
-}*/
+}
 
 #######################################
 output "subnet_prefix" {
@@ -249,6 +289,9 @@ output "subnet_id" {
 /*output "subnet_id" {
   value = data.azurerm_subnet.subnetID-001.id
 }*/
-output "vm_pip" {
+output "ubuntu_vm_pip" {
   value = azurerm_linux_virtual_machine.app_vm.public_ip_address
 }
+/*output "win_vm_pip" {
+  value = azurerm_windows_virtual_machine.app_vm.public_ip_address
+}*/
