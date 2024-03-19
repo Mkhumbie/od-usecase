@@ -10,3 +10,6 @@
 
 #tf vars files may include sensitive data
 *.tfvars
+
+#intellij local directory
+.idea/
