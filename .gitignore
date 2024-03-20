@@ -13,3 +13,6 @@
 
 #intellij local directory
 .idea/
+
+#wrong extension file
+main.tftplan

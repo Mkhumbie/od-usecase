@@ -1,0 +1,10 @@
+variable app_service_name {}
+variable vnet_address_space {}
+variable subnet_address_prefix {}
+variable location {}
+variable env_prefix {}
+variable sku_name {}
+variable allocation_method {}
+variable sku {}
+variable "vnet_name" {}
+variable "rg_name" {}
