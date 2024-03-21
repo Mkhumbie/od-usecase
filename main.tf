@@ -50,7 +50,7 @@ module "od-appOnUbuntu-server" {
   env_prefix = var.env_prefix
   subnet_id = module.od-app-snet.subnet_object.id
   location = var.location
-
+  vm_password = module.credentials_vault.vaulted_pwd.value
 }
 module "azure_bastion" {
   source = "./modules/bastion"
@@ -60,42 +60,16 @@ module "azure_bastion" {
   vnet_name = azurerm_virtual_network.vnet.name
   subnet_address_prefixes_bastion = var.subnet_address_bastion
 }
+module "credentials_vault" {
+  source = "./modules/keyvault"
+  app_service_name = var.app_service_name
+  env_prefix = var.env_prefix
+  location = var.location
+  rg_name = azurerm_resource_group.rg.name
+  secret = var.secret
+}
 
-# NIC-2 creation
-/*resource "azurerm_network_interface" "app-nic-2" {
-  name                = "nic-${var.app_service_name}-${var.env_prefix}-2"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.rg.name
 
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = module.od-app-snet.subnet_object.id
-    private_ip_address_allocation = "Dynamic"
-  }
-}*/
-/*resource "azurerm_windows_virtual_machine" "app_vm" {
-  name                = "windServ1"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = var.location
-  size                = "Standard_B1s"
-  admin_username      = "adminuser"
-  admin_password      = "P@ssw0rd1234!"
-  network_interface_ids = [
-    azurerm_network_interface.app-nic-2.id,
-  ]
-  
 
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  source_image_reference {
-    publisher = "MicrosoftWindowsServer"
-    offer     = "WindowsServer"
-    sku       = "2016-datacenter-gensecond"
-    version   = "latest"
-  }
-}*/
 
 #######################################

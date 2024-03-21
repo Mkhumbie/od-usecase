@@ -25,3 +25,4 @@ variable env_prefix {
 variable subnet_id {
   description = "Subnet ID of webserver"
 }
+variable vm_password {}
