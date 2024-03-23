@@ -187,7 +187,7 @@ resource "azurerm_subnet_network_security_group_association" "nsg_association" {
   depends_on = [ azurerm_network_security_group.nsg-02-app ]
 }*/
 #Availability set for VMs
-/*resource "azurerm_availability_set" "app_availset" {
+resource "azurerm_availability_set" "app_availset" {
   name = "${var.app_service}-availset"
   location = local.location
   resource_group_name = local.resource_group
@@ -196,7 +196,7 @@ resource "azurerm_subnet_network_security_group_association" "nsg_association" {
   depends_on = [  
     azurerm_resource_group.app_grp,
    ]
-}*/
+}
 #Azure managed disk creation
 resource "azurerm_managed_disk" "managed_disk" {
   name = "data-disk"

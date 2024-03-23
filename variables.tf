@@ -17,3 +17,4 @@ variable os_offer {}
 variable os_sku {}
 variable os_version {}
 variable secret {}
+variable filename {}

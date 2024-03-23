@@ -51,6 +51,7 @@ module "od-appOnUbuntu-server" {
   subnet_id = module.od-app-snet.subnet_object.id
   location = var.location
   vm_password = module.credentials_vault.vaulted_pwd.value
+  filename = var.filename
 }
 module "azure_bastion" {
   source = "./modules/bastion"

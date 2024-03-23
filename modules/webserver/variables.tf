@@ -20,9 +20,30 @@ variable app_service_name {
     description = "Service/VM name being provisioned or deployed"
 }
 variable env_prefix {
-    description = "Environment being deployed/provisioned on. eg dev, staging, prod" 
+    description = "Environment being deployed/provisioned on. eg dev, stag, prod" 
 }
 variable subnet_id {
   description = "Subnet ID of webserver"
 }
 variable vm_password {}
+variable vm1_size {
+    default = "Standard_B1s"
+}
+variable vm1_admin_username{
+    default = "adminuser"
+}
+variable vm2_size {
+    default = "Standard_B1s"
+}
+variable vm2_admin_user{
+    default = "adminuser"
+}
+variable pubkey_location {
+    default = "~/.ssh/id_rsa.pub"
+}
+variable storage_account_type{
+    default = "Standard_LRS"
+}
+variable "filename" {
+  default = ""
+}

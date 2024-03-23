@@ -1,6 +1,6 @@
 #Availability set for VMs
 resource "azurerm_availability_set" "app_availset" {
-  name = "${var.app_service_name}-availset"
+  name = "availset-${var.app_service_name}-${var.env_prefix}"
   location = var.location
   resource_group_name = var.rg_name
   platform_fault_domain_count = 3
@@ -9,23 +9,24 @@ resource "azurerm_availability_set" "app_availset" {
 
 #VM creation###########################
 resource "azurerm_linux_virtual_machine" "app_vm" {
-  name                = "app-vm"
+  name                = "vm1-${var.app_service_name}-${var.env_prefix}"
   resource_group_name = var.rg_name
   location            = var.location
-  size                = "Standard_B1s"
+  size                = var.vm1_size
   admin_username      = "adminuser"
+  availability_set_id = azurerm_availability_set.app_availset.id
   network_interface_ids = [
     azurerm_network_interface.app-nic.id,
   ]
 
   admin_ssh_key {
-    username   = "adminuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    username   = var.vm1_admin_username
+    public_key = file(var.pubkey_location)
   }
 
   os_disk {
     caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
+    storage_account_type = var.storage_account_type
   }
 
   source_image_reference {
@@ -34,16 +35,33 @@ resource "azurerm_linux_virtual_machine" "app_vm" {
     sku       = var.os_sku
     version   = var.os_version
   }
-  user_data = base64encode(file("entry_script.sh"))           
+  user_data = base64encode(file(var.filename))           
+}
+
+locals {
+  server_dev_trucated = substr(var.app_service_name, -6, -1) # vm-******-dev, retain 6 *'s to make 15 char server name, where starts will be 1st 6 letters of given server name 'app_service_name'
+  server_dev = "vm2-${local.server_dev_trucated}-${var.env_prefix}"
+
+  server_prod_trucated = substr(var.app_service_name, -5, -1) # vm-******-prod retain 5 *'s to make 15 char server name
+  server_prod = "vm2-${local.server_prod_trucated}-${var.env_prefix}"
+
+  server_staging_trucated = substr(var.app_service_name, -6, -1) # vm-*****-stag retain 5 *'s to make 15 char server name 
+  server_staging = "vm2-${local.server_staging_trucated}-${var.env_prefix}"
+
+  dev        = var.env_prefix == "dev" ? local.server_dev : ""
+  staging 	 = var.env_prefix == "stag" ? local.server_staging : ""
+  prod 	     = var.env_prefix != "prod" && var.env_prefix != "stag" ? local.server_prod : ""
+  server_name     = coalesce(local.dev, local.staging, local.prod)
 }
 # VM2
 resource "azurerm_windows_virtual_machine" "app_vm" {
-  name                = "windServ1"
+  name                = local.server_name
   resource_group_name = var.rg_name
   location            = var.location
-  size                = "Standard_B1s"
-  admin_username      = "adminuser"
+  size                = var.vm2_size
+  admin_username      = var.vm2_admin_user
   admin_password      = var.vm_password
+  availability_set_id = azurerm_availability_set.app_availset.id
   network_interface_ids = [
     azurerm_network_interface.app-nic-2.id,
   ]
